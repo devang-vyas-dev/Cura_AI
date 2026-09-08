@@ -15,7 +15,7 @@ app = FastAPI(title="Cura AI: A Prescription Scanner and Risk Analyzer")
 # This is the Main code that will help in connecting
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://cura-ai-beta.vercel.app"],
+    allow_origins=["https://cura-ai-iota.vercel.app"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
