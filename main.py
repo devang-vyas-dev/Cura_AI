@@ -1,3 +1,4 @@
+# Importing all the necessary libraries and their specific portions using import keyword
 import os
 import uuid
 import json
@@ -5,33 +6,28 @@ import base64
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-from supabase import create_client
+import asyncpg
 from groq import Groq
 
+# load_dotenv() is used to load all the env files that are currently present in this project which will be used to get the secret keys.
 load_dotenv()
-# The Line below is used to Initialize the FastApi app
+# The Line below is used to Initialize the FastApi app with the Title that is given
 app = FastAPI(title="Cura AI: A Prescription Scanner and Risk Analyzer")
 
 # This is the Main code that will help in connecting
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://cura-ai-beta.vercel.app"],
+    allow_origins=["https://cura-ai-beta.vercel.app"], #Here you have to paste the url of the deployed frontend
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Now we will create clients, and we will set the API Key from .getenv() method
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+DATABASE_URL=os.getenv("DATABASE_URL")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-print("SUPABASE_URL:", SUPABASE_URL)
+print("DATABASE_URL: ", bool(DATABASE_URL))
 print("GROQ configured:", bool(GROQ_API_KEY))
-
-# Create clients only if keys exist, otherwise None
-supabase = None
-if SUPABASE_URL and SUPABASE_KEY:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 groq_client = None
 if GROQ_API_KEY:
@@ -52,12 +48,10 @@ async def analyze_document(file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
         base64_image = image_to_base64(file_bytes)
-
         mime_type = file.content_type or "image/jpeg"
-
+        # Now we will make the completion variable and then we will use the gorq
         completion = groq_client.chat.completions.create(
-            model="qwen/qwen3.6-27b",
-
+            model="qwen/qwen3.8-27b",
             messages=[
             {
                 "role": "system",
@@ -109,7 +103,7 @@ async def analyze_document(file: UploadFile = File(...)):
     temperature=0,
     max_tokens=1200,
     reasoning_effort="none"
-)
+    )
         raw_content = completion.choices[0].message.content
         print("MODEL OUTPUT:", repr(raw_content))
         result = json.loads(raw_content)
@@ -123,7 +117,27 @@ async def analyze_document(file: UploadFile = File(...)):
             "risks": result["risks"],
             "recommendations": result["recommendations"]
         }
-        supabase.table("prescriptions").insert(final_data).execute()
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            await conn.execute(
+                """
+                INSERT INTO prescriptions 
+                (id, file_name, ocr_text, medicines_detected, risk_score, risks, recommendations)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
+                """,
+                final_data["id"],
+                final_data["file_name"],
+                final_data["ocr_text"],
+                final_data["medicines_detected"],
+                final_data["risk_score"],
+                final_data["risks"],
+                final_data["recommendations"],
+            )
+        except Exception as e:
+            print("The Problem is: ",e)
+            raise e
+        finally:
+            await conn.close()
         return final_data
     except Exception as e:
         print(f"ERROR: {e}")
