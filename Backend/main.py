@@ -3,7 +3,6 @@ import os
 import uuid
 import json
 import base64
-from fastapi import Security
 import jwt
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
